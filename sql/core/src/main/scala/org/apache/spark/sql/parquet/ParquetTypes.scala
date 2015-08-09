@@ -130,11 +130,13 @@ private[parquet] object ParquetTypesConverter extends Logging {
         groupType.getFields.apply(0).getRepetition == Repetition.REPEATED
     }
 
-    if (parquetType.isPrimitive && !parquetType.isRepetition(parquet.schema.Type.Repetition.REPEATED)) {
+    if (parquetType.isPrimitive &&
+      !parquetType.isRepetition(parquet.schema.Type.Repetition.REPEATED)) {
       toPrimitiveDataType(parquetType.asPrimitiveType, isBinaryAsString, isInt96AsTimestamp)
     } else if (parquetType.isRepetition(parquet.schema.Type.Repetition.REPEATED)) {
       if (parquetType.isPrimitive) {
-        ArrayType(toPrimitiveDataType(parquetType.asPrimitiveType(), isBinaryAsString, isInt96AsTimestamp), containsNull = false)
+        ArrayType(toPrimitiveDataType(parquetType.asPrimitiveType(),
+          isBinaryAsString, isInt96AsTimestamp), containsNull = false)
       } else {
         val fields = parquetType.asGroupType()
           .getFields
@@ -342,7 +344,8 @@ private[parquet] object ParquetTypesConverter extends Logging {
             isProtobufSchema)
           if (isProtobufSchema) {
             if (parquetElementType.isPrimitive) {
-              new parquet.schema.PrimitiveType(parquet.schema.Type.Repetition.REPEATED, parquetElementType.asPrimitiveType().getPrimitiveTypeName, name)
+              new parquet.schema.PrimitiveType(parquet.schema.Type.Repetition.REPEATED,
+                parquetElementType.asPrimitiveType().getPrimitiveTypeName, name)
             } else {
               elementType match {
                 case StructType(structFields) => {
@@ -368,7 +371,8 @@ private[parquet] object ParquetTypesConverter extends Logging {
             inArray = false,
             toThriftSchemaNames, isProtobufSchema)
           if (isProtobufSchema) {
-            new parquet.schema.PrimitiveType(parquet.schema.Type.Repetition.REPEATED, parquetElementType.asPrimitiveType().getPrimitiveTypeName, name)
+            new parquet.schema.PrimitiveType(parquet.schema.Type.Repetition.REPEATED,
+              parquetElementType.asPrimitiveType().getPrimitiveTypeName, name)
           } else {
             ConversionPatterns.listType(
               repetition,
@@ -429,7 +433,8 @@ private[parquet] object ParquetTypesConverter extends Logging {
   }
 
   def convertFromAttributes(attributes: Seq[Attribute],
-                            toThriftSchemaNames: Boolean = false, isProtobufSchema: Boolean = false): MessageType = {
+      toThriftSchemaNames: Boolean = false,
+      isProtobufSchema: Boolean = false): MessageType = {
     val fields = attributes.map(
       attribute =>
         fromDataType(attribute.dataType, attribute.name, attribute.nullable,

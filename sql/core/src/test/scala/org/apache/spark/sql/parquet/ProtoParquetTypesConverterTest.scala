@@ -167,4 +167,20 @@ class ProtoParquetTypesConverterTest extends QueryTest with ParquetTest {
     assert(nestedR1Array(0)(0) === 6)
     assert(nestedR2Array(0)(0) === 9)
   }
+
+  test("should convert array of strings") {
+    val rows: Array[Row] = fetchRows("/proto-repeated-string.parquet", "strings")
+    assert(rows.length === 3)
+    assert(rows(0)=== Row(Seq("hello", "world")))
+    assert(rows(1)=== Row(Seq("good", "bye")))
+    assert(rows(2)=== Row(Seq("one","two", "three")))
+  }
+
+
+  def fetchRows(file: String, table: String ): Array[Row] = {
+    val resource: URL = getClass.getResource(file)
+    val pf: DataFrame = sqlContext.parquetFile(resource.toURI.toString)
+    pf.registerTempTable(table)
+    sqlContext.sql("select * from "  + table).collect()
+  }
 }

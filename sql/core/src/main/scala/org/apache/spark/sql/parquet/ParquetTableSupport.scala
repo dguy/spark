@@ -88,7 +88,8 @@ private[parquet] class RowReadSupport extends ReadSupport[Row] with Logging {
         parquetSchema, false, true)
     }
     log.debug(s"list of attributes that will be read: $schema")
-    val isProtobuf = "true".equals(readContext.getReadSupportMetadata.get(RowReadSupport.FROM_PROTOBUF))
+    val isProtobuf = "true".equals(readContext
+      .getReadSupportMetadata.get(RowReadSupport.FROM_PROTOBUF))
     new RowRecordMaterializer(parquetSchema, schema, fromProtobuf = isProtobuf)
   }
 

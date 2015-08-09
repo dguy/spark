@@ -183,7 +183,7 @@ private[sql] object CatalystConverter {
   }
 }
 
-private[parquet] abstract class CatalystConverter extends GroupConverter {
+private[parquet] abstract class CatalystConverter extends GroupConverter with NeedsReset {
   /**
    * The number of fields this group has
    */
@@ -300,7 +300,8 @@ private[parquet] class CatalystGroupConverter(
     protected[parquet] val fromProtobuf: Boolean = false)
   extends CatalystConverter {
 
-  def this(schema: Array[FieldType], index: Int, parent: CatalystConverter, fromProtobuf:Boolean=false) =
+  def this(schema: Array[FieldType], index: Int, parent: CatalystConverter,
+           fromProtobuf: Boolean=false) =
     this(
       schema,
       index,
@@ -344,8 +345,8 @@ private[parquet] class CatalystGroupConverter(
   override def start(): Unit = {
     current = ArrayBuffer.fill(size)(null)
     converters.foreach {
-      converter => if (!converter.isPrimitive) {
-        converter.asInstanceOf[CatalystConverter].clearBuffer
+      converter => if (converter.isInstanceOf[NeedsReset]) {
+        converter.asInstanceOf[NeedsReset].clearBuffer
       }
     }
   }
@@ -846,32 +847,57 @@ private[parquet] class CatalystArrayContainsNullConverter(
   }
 }
 
+trait NeedsReset {
+  protected[parquet] def clearBuffer: Unit
+}
 private[parquet] class CatalystProtobufNativeArrayConverter(
     val name:String,
     val elementType: NativeType,
     val fieldIndex: Int,
     val parent: CatalystConverter,
     var capacity: Int = CatalystArrayConverter.INITIAL_ARRAY_SIZE)
-  extends PrimitiveConverter {
+  extends PrimitiveConverter with NeedsReset {
+
+  private[this] var dict: Array[String] = null
+
+  override def hasDictionarySupport: Boolean = true
+
+  override def setDictionary(dictionary: Dictionary):Unit =
+    dict = Array.tabulate(dictionary.getMaxId + 1) {dictionary.decodeToBinary(_).toStringUsingUTF8}
+
+
+  override def addValueFromDictionary(dictionaryId: Int): Unit =
+    addValue(dict(dictionaryId))
+
 
   type NativeType = elementType.JvmType
 
-  private var buffer: Array[NativeType] = elementType.classTag.newArray(capacity)
+  private var buffer: ArrayBuffer[Any] = ArrayBuffer.empty[Any]
 
   private var elements: Int = 0
 
+  override protected[parquet] def clearBuffer(): Unit = {
+    buffer.clear()
+    elements =0
+  }
 
-  private def addValue(value: NativeType): Unit = {
-    checkGrowBuffer()
-    buffer(elements) = value
+  private def addValue(value: Any): Unit = {
+    buffer += value
     elements += 1
     parent.updateField(
       fieldIndex,
       buffer.slice(0, elements).toSeq)
   }
 
-  override def addBinary(value: Binary): Unit = addValue(value.getBytes.asInstanceOf[NativeType])
+  override def addBinary(value: Binary): Unit = {
+    elementType match {
+      case StringType =>
+        addValue(value.toStringUsingUTF8)
+      case _ =>
+        addValue(value.getBytes.asInstanceOf[NativeType])
+    }
 
+  }
 
   override def addBoolean(value: Boolean): Unit = addValue(value.asInstanceOf[NativeType])
 
@@ -885,21 +911,13 @@ private[parquet] class CatalystProtobufNativeArrayConverter(
 
   override def addLong(value: Long): Unit = addValue(value.asInstanceOf[NativeType])
 
-
-  private def checkGrowBuffer(): Unit = {
-    if (elements >= capacity) {
-      val newCapacity = 2 * capacity
-      val tmp: Array[NativeType] = elementType.classTag.newArray(newCapacity)
-      Array.copy(buffer, 0, tmp, 0, capacity)
-      buffer = tmp
-      capacity = newCapacity
-    }
-  }
 }
 
-class CatalystProtobufStructArrayConverter(fields: Array[FieldType], myFieldIndex: Int, parent: CatalystConverter)
+class CatalystProtobufStructArrayConverter(fields: Array[FieldType],
+    myFieldIndex: Int, parent: CatalystConverter)
   extends CatalystGroupConverter(fields, myFieldIndex, parent, fromProtobuf = true) {
-  val rowBuffer: ArrayBuffer[GenericRow] = new ArrayBuffer[GenericRow](CatalystArrayConverter.INITIAL_ARRAY_SIZE)
+  val rowBuffer: ArrayBuffer[GenericRow] =
+    new ArrayBuffer[GenericRow](CatalystArrayConverter.INITIAL_ARRAY_SIZE)
   var currentRow:Array[Any] = new Array[Any](fields.length)
   var elements = 0
   override protected[parquet] def updateField(fieldIndex: Int, value: Any): Unit = {
